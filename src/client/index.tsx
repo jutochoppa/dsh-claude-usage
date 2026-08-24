@@ -356,14 +356,19 @@ export function bindFooterMeter(anchor: HTMLDivElement): () => void {
   const settingsArea = footerActions?.nextElementSibling
   if (!(footerActions instanceof HTMLElement) || !(settingsArea instanceof HTMLElement)) return () => {}
   anchor.style.visibility = 'hidden'
+  const usageAnchors = (): HTMLElement[] => {
+    const anchors = [...footerActions.querySelectorAll<HTMLElement>('[data-dsh-usage-footer-action]')]
+    if (!anchors.includes(anchor)) anchors.push(anchor)
+    return anchors
+  }
   let settingsTrigger: HTMLButtonElement | null = null
-  let previousWidth = ''
   let resizeObserver: ResizeObserver | null = null
 
   const position = () => {
     if (settingsTrigger === null) return
     const rect = settingsTrigger.getBoundingClientRect()
-    const left = rect.right + 4
+    const index = Math.max(0, usageAnchors().indexOf(anchor))
+    const left = rect.right + 4 + index * 32
     anchor.style.left = `${left}px`
     anchor.style.top = `${rect.top + (rect.height - 28) / 2}px`
     anchor.style.setProperty('--dcl-panel-available-width', `${Math.max(0, left + 28 - 12)}px`)
@@ -372,8 +377,13 @@ export function bindFooterMeter(anchor: HTMLDivElement): () => void {
   const releaseTrigger = () => {
     resizeObserver?.disconnect()
     resizeObserver = null
-    if (settingsTrigger !== null && settingsTrigger.style.width === 'calc(100% - 34px)') {
-      settingsTrigger.style.width = previousWidth
+    if (settingsTrigger !== null) {
+      const otherAnchors = usageAnchors().filter(candidate => candidate !== anchor && footerActions.contains(candidate))
+      const originalWidth = settingsTrigger.dataset.dshUsageOriginalWidth
+      if (otherAnchors.length === 0 && originalWidth !== undefined) {
+        settingsTrigger.style.width = originalWidth
+        delete settingsTrigger.dataset.dshUsageOriginalWidth
+      }
     }
     settingsTrigger = null
     anchor.style.removeProperty('--dcl-panel-available-width')
@@ -382,14 +392,19 @@ export function bindFooterMeter(anchor: HTMLDivElement): () => void {
   const bindTrigger = () => {
     const candidate = settingsArea.querySelector('button')
     if (candidate === settingsTrigger) {
+      if (candidate !== null) {
+        candidate.style.width = `calc(100% - ${34 * usageAnchors().length}px)`
+      }
       position()
       return
     }
     releaseTrigger()
     if (!(candidate instanceof HTMLButtonElement)) return
     settingsTrigger = candidate
-    previousWidth = candidate.style.width
-    candidate.style.width = 'calc(100% - 34px)'
+    if (candidate.dataset.dshUsageOriginalWidth === undefined) {
+      candidate.dataset.dshUsageOriginalWidth = candidate.style.width
+    }
+    candidate.style.width = `calc(100% - ${34 * usageAnchors().length}px)`
     resizeObserver = new ResizeObserver(position)
     resizeObserver.observe(candidate)
     resizeObserver.observe(footerActions)
@@ -399,6 +414,7 @@ export function bindFooterMeter(anchor: HTMLDivElement): () => void {
 
   const mutationObserver = new MutationObserver(bindTrigger)
   mutationObserver.observe(settingsArea, { childList: true, subtree: true })
+  mutationObserver.observe(footerActions, { childList: true, subtree: true })
   window.addEventListener('resize', position)
   bindTrigger()
   return () => {
@@ -415,7 +431,7 @@ export function FooterUsageAction({ wide }: FooterActionProps) {
     return bindFooterMeter(anchorRef.current)
   }, [wide])
   if (!wide) return null
-  return <div ref={anchorRef} className="dcl-footer-action-anchor"><ClaudeUsageIndicator /></div>
+  return <div ref={anchorRef} className="dcl-footer-action-anchor" data-dsh-usage-footer-action="claude"><ClaudeUsageIndicator /></div>
 }
 
 export function apply(ctx: ClientContext): void {
