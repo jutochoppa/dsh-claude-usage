@@ -42,7 +42,7 @@ dsh --profile web --dump-config
 dsh web
 ~~~
 
-Refresh the existing Web page after the DSH host restarts. The client bundle is loaded by DSH's client-module system; a separate Vite server is neither required nor useful.
+During development, Host changes hot-reload only while `pnpm run dev` is running and rebuilding the plugin output. Browser client changes require a rebuild and then a refresh of the existing Web page. The client bundle is loaded by DSH's client-module system; a separate Vite server is neither required nor useful.
 
 Remove it with:
 
@@ -56,14 +56,14 @@ A tarball ships prebuilt Host and lazy-CJS client artifacts, avoiding install-ti
 
 ~~~sh
 pnpm pack
-dsh plugin --profile web add ./dsh-claude-usage-0.1.0.tgz
+dsh plugin --profile web add ./dsh-claude-usage-0.1.3.tgz
 ~~~
 
 For a Git-host install, pnpm 10 requires the profile to allow this package's prepare script. Pin a commit and follow the exact allowBuilds instruction printed by DSH/pnpm.
 
 ## Configuration
 
-All four fields are available in **Settings → Plugins → Claude usage**. Changes are staged locally until Save, are persisted through DSH Settings, and take effect after DSH Web restarts. The profile row remains the base configuration beneath saved user overrides.
+All four fields are available in **Settings → Plugins → Claude usage**. Changes are staged locally until Save, are persisted through DSH Settings, and the saved settings/profile patches apply live without a restart. The profile row remains the base configuration beneath saved user overrides.
 
 The bundle inserts this row:
 

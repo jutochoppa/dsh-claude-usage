@@ -42,7 +42,7 @@ dsh --profile web --dump-config
 dsh web
 ~~~
 
-DSH host 重启后，刷新现有 Web 页面。client bundle 由 DSH 的 client-module system 加载；既不需要单独的 Vite server，它也不会起作用。
+开发期间，只有在运行 `pnpm run dev` 并重新构建插件输出时，Host 更改才会热重载。浏览器客户端更改需要重新构建，然后刷新现有 Web 页面。client bundle 由 DSH 的 client-module system 加载；既不需要也不应使用单独的 Vite server。
 
 使用以下命令移除：
 
@@ -56,14 +56,14 @@ tarball 随附预构建的 Host 和 lazy-CJS client artifacts，从而避免安�
 
 ~~~sh
 pnpm pack
-dsh plugin --profile web add ./dsh-claude-usage-0.1.0.tgz
+dsh plugin --profile web add ./dsh-claude-usage-0.1.3.tgz
 ~~~
 
 对于 Git-host 安装，pnpm 10 要求 profile 允许此 package 的 prepare script。请固定一个 commit，并严格遵循 DSH/pnpm 输出的 allowBuilds 指令。
 
 ## 配置
 
-所有四个 field 均可在 **Settings → Plugins → Claude usage** 中使用。更改会在本地暂存直至点击 Save，通过 DSH Settings 持久化，并在 DSH Web 重启后生效。profile row 仍是已保存用户覆盖项之下的基础配置。
+所有四个 field 均可在 **Settings → Plugins → Claude usage** 中使用。更改会在本地暂存直至点击 Save，通过 DSH Settings 持久化；已保存的设置/profile patch 会实时生效，无需重启。profile row 仍是已保存用户覆盖项之下的基础配置。
 
 bundle 会插入以下 row：
 
