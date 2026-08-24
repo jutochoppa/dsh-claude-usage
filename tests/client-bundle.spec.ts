@@ -19,6 +19,8 @@ describe('built client artifact', () => {
     expect(source).toContain('settings.plugin.item')
     expect(source).toContain('claude-usage')
     expect(source).toContain('calc(100vw - 24px)')
+    expect(source).toContain('m4.7144 15.9555')
+    expect(source).not.toContain('M17.3041 3.541')
     expect(source).not.toContain('settings.trigger')
   })
 
