@@ -1,5 +1,7 @@
 # dsh-claude-usage
 
+English | [简体中文](README.zh.md)
+
 A polished Anthropic Claude plan-usage indicator for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Web UI.
 
 The plugin preserves the standard Settings gear and label while adding a context-meter-style ring at the far right. The ring contains the Anthropic mark and opens a detailed quota panel on hover or keyboard focus.
