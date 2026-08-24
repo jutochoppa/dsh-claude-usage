@@ -1,0 +1,8 @@
+- insert:
+    - id: claude-usage
+      name: dsh-claude-usage
+      config:
+        refreshIntervalMs: 300000
+        hoverRefreshMinAgeMs: 30000
+        requestTimeoutMs: 15000
+        credentialsFile: ''
