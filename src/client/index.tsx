@@ -178,7 +178,6 @@ export function ClaudeUsageIndicator() {
       }}
     >
       <svg className="dcl-ring" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
-        <circle className="dcl-track" cx="12" cy="12" r="9" />
         <circle className={`dcl-fill${level === '' ? '' : ` dcl-fill-${level}`}`} cx="12" cy="12" r="9" strokeDasharray={RING_LENGTH} strokeDashoffset={RING_LENGTH * (1 - percent / 100)} />
       </svg>
       <svg className="dcl-logo" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d={CLAUDE_PATH} /></svg>

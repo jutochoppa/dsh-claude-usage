@@ -6,8 +6,7 @@ export const styles = `
 .dcl-meter{width:28px;height:28px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:transparent;border:0;border-radius:999px;padding:0;place-items:center;display:grid;position:relative;transition:background .15s ease}
 .dcl-usage-root:hover .dcl-meter,.dcl-usage-root:focus-within .dcl-meter{background:var(--dsw-alias-interactive-bg-hover)}
 .dcl-ring{position:absolute;inset:2px;transform:rotate(-90deg)}
-.dcl-track{fill:none;stroke:var(--dsw-alias-border-l3);stroke-width:2}
-.dcl-fill{fill:none;stroke:var(--dsw-alias-label-tertiary);stroke-width:2;stroke-linecap:round;transition:stroke-dashoffset .35s ease,stroke .2s ease}
+.dcl-fill{fill:none;stroke:#d97757;stroke-width:2;stroke-linecap:round;transition:stroke-dashoffset .35s ease,stroke .2s ease}
 .dcl-fill-warn{stroke:var(--dsw-static-orange-500,#f59e0b)}
 .dcl-fill-critical{stroke:var(--dsw-static-red-500,#ef4444)}
 .dcl-logo{width:12px;height:12px;color:#d97757;z-index:1}
