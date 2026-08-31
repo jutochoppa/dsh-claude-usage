@@ -1,6 +1,6 @@
 {
   "name": "dsh-claude-usage",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Anthropic Claude plan usage indicator for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
