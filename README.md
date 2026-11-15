@@ -1,138 +1,96 @@
-# dsh-claude-usage
+# Claude usage for DeepSeek Harness
 
 English | [简体中文](README.zh.md)
 
-A polished Anthropic Claude plan-usage indicator for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Web UI.
+See how much of your Claude plan you have left without leaving DeepSeek Harness. A card at the bottom of the sidebar shows your 5-hour limit, your weekly limit, any per-model weekly limit, and when each one resets.
 
-The plugin adds a full-width usage card to the sidebar footer, laid out like the dsh-codex-usage card: the Claude mark and title, then one row per limit with a thin progress bar, the remaining share, and the reset time. In the collapsed sidebar rail the card switches to compact labels.
+<p align="left">
+  <img src="assets/sidebar-card.png" alt="Claude usage card in the DeepSeek Harness sidebar" width="292">
+</p>
 
-## Features
+This is a fork of [leonardoxr/dsh-claude-usage](https://github.com/leonardoxr/dsh-claude-usage), updated for DeepSeek Harness 0.2 and restyled to match the [dsh-codex-usage](https://github.com/sodaa-l/dsh-codex-usage) card, so the two sit together neatly.
 
-- Sidebar card that matches the Codex usage card's layout and DSH theme tokens, so both providers read as one set.
-- Full quota detail for Claude plan limits: the 5-hour session window, the weekly window, model-scoped weekly limits, extra-usage state, plan and rate-limit tier.
-- Five-minute polling by default, configurable through the bundle row.
-- Fresh-on-hover data with a 250 ms debounce, one in-flight request, a shared five-minute poll cache, a shorter forced-hover cache, and failure throttling.
-- Honors Anthropic's `Retry-After` cooldowns; the usage endpoint itself rate-limits aggressive polling.
-- Last-good fallback so a temporary provider or network failure does not erase useful data.
-- Read-only credential access: the plugin never writes to or refreshes Claude Code's stored sign-in.
-- API route served through DSH's authenticated connection layer (owner Peers only) and an allowlist normalizer that removes tokens, identifiers, emails, and unknown provider fields.
+## What you need
 
-## Requirements
+- DeepSeek Harness 0.2.2 or newer (the desktop app or `dsh web`)
+- Claude Code, signed in with a Claude Pro or Max subscription
+- Windows or Linux. macOS isn't supported yet, because Claude Code keeps its sign-in in the macOS Keychain.
+- Node.js 22+ and pnpm 10, to build the plugin
 
-- Node.js 22 or newer
-- pnpm 10
-- DeepSeek Harness 0.2.2-rc.3 or a later 0.2.x release (desktop app or `dsh web`)
-- A recent Claude Code CLI signed in with a Claude subscription (`claude login`); until Claude Code holds a valid sign-in, the indicator shows an error state pointing at `claude login`
-- Windows or Linux, where Claude Code stores its OAuth credentials at `~/.claude/.credentials.json` (macOS keeps credentials in the Keychain and is not supported yet)
+## Install
 
-## Install from this checkout
-
-Build the package:
-
-~~~sh
+```sh
+git clone https://github.com/jutochoppa/dsh-claude-usage.git
+cd dsh-claude-usage
 pnpm install
-pnpm run check
-~~~
-
-Add it to a DSH profile from this directory:
-
-~~~sh
-dsh plugin --profile desktop add .
-dsh --profile desktop --dump-config
-~~~
-
-Use `--profile web` (and boot with `dsh web`) to target the Web profile instead of the desktop app.
-
-During development, Host changes hot-reload only while `pnpm run dev` is running and rebuilding the plugin output. Browser client changes require a rebuild and then a refresh of the existing Web page. The client bundle is loaded by DSH's client-module system; a separate Vite server is neither required nor useful.
-
-Remove it with:
-
-~~~sh
-dsh plugin --profile desktop remove dsh-claude-usage
-~~~
-
-### Install a packed artifact
-
-A tarball ships prebuilt Host and lazy-CJS client artifacts, avoiding install-time build approval:
-
-~~~sh
 pnpm pack
 dsh plugin --profile desktop add ./dsh-claude-usage-0.2.1.tgz
-~~~
+```
 
-For a Git-host install, pnpm 10 requires the profile to allow this package's prepare script. Pin a commit and follow the exact allowBuilds instruction printed by DSH/pnpm.
+Then quit DeepSeek Harness completely and open it again. The card appears at the bottom of the sidebar.
 
-## Configuration
+- **Using the web version?** Use `--profile web` instead of `--profile desktop`, then start it with `dsh web`.
+- **`dsh` not found on Windows?** The desktop app includes it at `%LOCALAPPDATA%\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd`.
+- **To uninstall:** `dsh plugin --profile desktop remove dsh-claude-usage`
 
-All four fields are available in the **Claude usage** tab of **Settings → Plugins**. Changes are staged locally until Save and persisted through DSH Settings. Every field is a volatile config field, so saved values apply live without a restart. The profile row remains the base configuration beneath saved user overrides.
+## Sign in
 
-The bundle inserts this row:
+The plugin has no login of its own. It uses your Claude Code sign-in:
 
-~~~yaml
-- id: claude-usage
-  name: dsh-claude-usage
-  config:
-    refreshIntervalMs: 300000
-    hoverRefreshMinAgeMs: 30000
-    requestTimeoutMs: 15000
-    credentialsFile: ''
-~~~
+1. Open Claude Code by running `claude` in a terminal.
+2. Type `/login` and finish signing in.
 
-Override the whole row in the profile's cordis.patch.yml to change the composition-layer base. Later layers replace a row's complete config value; saved Settings UI values override that base.
+Claude Code saves your sign-in to `~/.claude/.credentials.json`, and the plugin reads it from there. Signing in to the Claude desktop app is not enough, because the desktop app stores its sign-in separately.
 
-| Field | Default | Meaning |
-| --- | ---: | --- |
-| refreshIntervalMs | 300000 | Background poll interval; minimum 60 seconds. |
-| hoverRefreshMinAgeMs | 30000 | Minimum age before another hover refresh; minimum 5 seconds. |
-| requestTimeoutMs | 15000 | Timeout for each Anthropic usage request. |
-| credentialsFile | *(empty)* | Optional absolute path to the Claude Code credentials file; empty selects the default per-OS location. |
+If the card asks you to sign in again, your Claude Code sign-in has expired. Opening Claude Code usually renews it; otherwise run `/login` again.
 
-## How it works
+## Reading the card
 
-1. The Host plugin injects DSH's `connection` service and registers an exact GET route, /api/plugins/claude-usage, on its Fetch registry.
-2. On each read it performs a read-only lookup of the Claude Code OAuth access token in the credentials file.
-3. It calls Anthropic's OAuth usage endpoint — the same undocumented beta API behind Claude Code's /usage command — with the `oauth-2025-04-20` beta header.
-4. A strict normalizer returns quota-only data (percentages, ISO reset times, extra-usage flags) to the authenticated browser route.
-5. The browser registers a full-width card in sidebar.footer.action, ordered directly after the Codex usage card when both are installed.
-6. The browser polls on the configured cadence and requests a coalesced refresh after a 250 ms hover debounce.
+- **Remaining X%** is how much of that limit you have left. The bar shows the same thing.
+- **The time on the right** is when that limit resets.
+- The card checks your usage every 5 minutes. Hovering over it checks right away.
+- With the sidebar collapsed, the card uses short labels like "5h" and "62% left".
 
-Expired tokens are detected locally and surface a "run claude login" error state instead of hammering the endpoint; Claude Code refreshes its own sign-in during normal use. A 429 response arms a Retry-After-aware cooldown so background polls never fight Anthropic's rate limiter.
+## Settings
 
-The client artifact is not ordinary browser ESM. tsdown.config.ts emits DSH's required lazy-CJS registration. React and DSH UI packages remain external and resolve through DSH's client module table, preventing duplicate React runtimes.
+Open **Settings → Plugins → Claude usage**. Changes take effect as soon as you save.
 
-## Security and privacy
+<p align="left">
+  <img src="assets/settings-tab.png" alt="Claude usage settings page" width="560">
+</p>
 
-- The plugin reads the credentials file but never stores, transmits, logs, or refreshes the token; the access token exists only inside the Host process for the duration of one request.
-- The route is an exact GET route on DSH's shared /api channel: DSH's connection layer applies its Host/Origin checks and browser authentication, and only owner Peers reach it.
-- Responses omit tokens, account/workspace/user IDs, emails, raw provider payloads, and unknown fields; only clamped percentages, reset timestamps, labels, and boolean flags survive normalization.
-- Error messages are static strings that never echo credential paths or provider responses.
-- The provider route is not configurable beyond the optional local credentials path, avoiding an arbitrary authenticated proxy.
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Background refresh interval | 300000 ms (5 minutes) | How often the card checks your usage. Minimum is 1 minute. |
+| Hover refresh minimum age | 30000 ms (30 seconds) | Hovering won't check more often than this. |
+| Request timeout | 15000 ms (15 seconds) | How long to wait for Anthropic before giving up. |
+| Credentials file | empty | Only needed if your Claude Code credentials aren't in the usual place. |
+
+## Privacy
+
+- Your Claude Code token stays on your computer. The plugin reads it and sends it only to Anthropic (`api.anthropic.com`) to ask for your usage. It never saves, changes, renews, or logs the token.
+- The sidebar only receives percentages, reset times, and your plan name. No tokens, emails, or account IDs.
+- The usage numbers come from the same Anthropic endpoint that Claude Code's `/usage` command uses. Anthropic hasn't documented it publicly, so it could change without warning.
 
 ## Development
 
-~~~sh
-pnpm run typecheck
-pnpm run test
-pnpm run build
-pnpm run pack:check
-~~~
+```sh
+pnpm run check   # type check, build, and run the tests
+```
 
-The default suite skips the live provider test. Run it when Claude Code is installed and signed in:
+To test against your real account (Claude Code must be signed in), in PowerShell:
 
-~~~powershell
+```powershell
 $env:CLAUDE_LIVE = '1'
 pnpm exec vitest run tests/claude-live.spec.ts
-~~~
+```
 
-## References
+The screenshots in `assets/` were rendered from the plugin's real components using made-up numbers.
 
-- [DSH: Your first plugin](https://deepseek-harness.github.io/deepseek-harness/en/develop/basic/)
-- [DSH: Package and install](https://deepseek-harness.github.io/deepseek-harness/en/develop/basic/publish)
-- [DSH: Adding a settings card](https://deepseek-harness.github.io/deepseek-harness/en/reference/cookbook/adding-a-settings-card)
-- [DSH: Client modules](https://deepseek-harness.github.io/deepseek-harness/en/reference/subsystems/client-modules)
-- [ccusage](https://github.com/ccusage/ccusage) — local transcript analytics for Claude Code
-- Community confirmations of the OAuth usage contract: [LimitsChecker](https://github.com/lapurryt/LimitsChecker), [claude-usage-widget](https://github.com/PanithanNanti/claude-usage-widget)
+## Credits and license
 
-## License
+- Original plugin by [leonardoxr](https://github.com/leonardoxr/dsh-claude-usage).
+- Card layout follows [dsh-codex-usage](https://github.com/sodaa-l/dsh-codex-usage) by sodaa-l.
+- Claude and the Claude logo belong to Anthropic. This project is not affiliated with Anthropic or DeepSeek.
 
-MIT
+MIT license. See [LICENSE](LICENSE).
