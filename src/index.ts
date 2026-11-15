@@ -1,29 +1,42 @@
-import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { Context } from '@deepseek-ai/cordis'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
-import type {} from '@deepseek-ai/dsh-host-webserver'
-import { UsageService } from './usage-service.js'
+import type {} from '@deepseek-ai/dsh-client-connection'
+import type {} from '@deepseek-ai/dsh-settings'
+import { UsageService, type UsageServiceOptions } from './usage-service.js'
 
 export const name = 'dsh-claude-usage'
-export const SETTINGS_NAMESPACE = settingsNamespace('claude-usage')
-export const inject = ['webServer', 'settings'] as const
+/** Profile entry id from cordis.patch.yml; DSH 0.2 settings forms are keyed by it. */
+export const SETTINGS_NAMESPACE = 'claude-usage'
+export const inject = ['connection'] as const
 
-export interface Config {
+/** Plain settings snapshot read from the live (volatile) config references. */
+export interface Settings {
   refreshIntervalMs: number
   hoverRefreshMinAgeMs: number
   requestTimeoutMs: number
   credentialsFile: string
 }
 
-export const Config: Schema<Config> = Schema.object({
-  refreshIntervalMs: Schema.natural().min(60_000).default(300_000),
-  hoverRefreshMinAgeMs: Schema.natural().min(5_000).default(30_000),
-  requestTimeoutMs: Schema.natural().min(1_000).default(15_000),
-  credentialsFile: Schema.string().default(''),
+/** Every field is volatile: Settings edits apply live without remounting the plugin. */
+export interface Config {
+  refreshIntervalMs: Volatile<number>
+  hoverRefreshMinAgeMs: Volatile<number>
+  requestTimeoutMs: Volatile<number>
+  credentialsFile: Volatile<string>
+}
+
+export const Config = Schema.object({
+  refreshIntervalMs: Schema.natural().min(60_000).default(300_000)
+    .description('Milliseconds between background usage polls.').volatile(),
+  hoverRefreshMinAgeMs: Schema.natural().min(5_000).default(30_000)
+    .description('Milliseconds before another hover refresh may run.').volatile(),
+  requestTimeoutMs: Schema.natural().min(1_000).default(15_000)
+    .description('Milliseconds allowed for each Anthropic usage request.').volatile(),
+  credentialsFile: Schema.string().default('')
+    .description('Optional path to the Claude Code credentials file. Empty uses the default location.').volatile(),
 })
 
-export function assertConfig(config: Config): void {
+export function assertConfig(config: Settings): void {
   if (!Number.isSafeInteger(config.refreshIntervalMs) || config.refreshIntervalMs < 60_000) {
     throw new Error('dsh-claude-usage: refreshIntervalMs must be an integer of at least 60000')
   }
@@ -38,95 +51,55 @@ export function assertConfig(config: Config): void {
   }
 }
 
-const ROUTE = '/api/plugins/claude-usage'
-
-function isLoopback(address: string | undefined): boolean {
-  return address === '127.0.0.1'
-    || address === '::1'
-    || address === '::ffff:127.0.0.1'
-}
-
-function firstHeader(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value
-}
-
-function isLoopbackHost(host: string | undefined): host is string {
-  if (host === undefined) return false
-  try {
-    const hostname = new URL(`http://${host}`).hostname.toLowerCase()
-    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
-  } catch {
-    return false
+/** Snapshot the live config references; each call sees the latest saved values. */
+export function readSettings(config: Config): Settings {
+  return {
+    refreshIntervalMs: config.refreshIntervalMs.get(),
+    hoverRefreshMinAgeMs: config.hoverRefreshMinAgeMs.get(),
+    requestTimeoutMs: config.requestTimeoutMs.get(),
+    credentialsFile: config.credentialsFile.get(),
   }
 }
 
-export function isTrustedLocalRequest(
-  remoteAddress: string | undefined,
-  host: string | undefined,
-  origin: string | undefined,
-  fetchSite: string | undefined,
-  referer: string | undefined,
-): boolean {
-  if (!isLoopback(remoteAddress) || !isLoopbackHost(host)) return false
-  if (fetchSite !== undefined && fetchSite !== 'same-origin' && fetchSite !== 'none') return false
-  for (const source of [origin, referer]) {
-    if (source === undefined) continue
-    try {
-      const url = new URL(source)
-      if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.host !== host) return false
-    } catch {
-      return false
-    }
-  }
-  return true
-}
+export const ROUTE = '/api/plugins/claude-usage'
 
-function writeJson(res: ServerResponse, status: number, body: unknown): void {
-  const json = JSON.stringify(body)
-  res.writeHead(status, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(json),
-    'Cache-Control': 'no-store',
-    'X-Content-Type-Options': 'nosniff',
+function json(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+    },
   })
-  res.end(json)
 }
 
 export function apply(ctx: Context, config: Config): void {
-  assertConfig(config)
-  const settings = ctx.settings.register(SETTINGS_NAMESPACE, Config, {
-    base: config,
-    applies: 'restart',
-    validate: assertConfig,
-  })
-  const active = settings.get()
-  assertConfig(active)
-  const usage = new UsageService(active)
+  assertConfig(readSettings(config))
+  const options = (): UsageServiceOptions => readSettings(config)
+  const usage = new UsageService(options)
   ctx.effect(() => () => { usage.dispose() }, 'claude-usage: service state')
-  ctx.effect(() => ctx.webServer.register({
-    kind: 'exact',
-    path: ROUTE,
-    async handler(req: IncomingMessage, res: ServerResponse) {
-      if (req.method !== 'GET') {
-        res.setHeader('Allow', 'GET')
-        writeJson(res, 405, { ok: false, error: { code: 'METHOD_NOT_ALLOWED', message: 'Use GET' } })
-        return
-      }
-      if (!isTrustedLocalRequest(
-        req.socket.remoteAddress,
-        firstHeader(req.headers.host),
-        firstHeader(req.headers.origin),
-        firstHeader(req.headers['sec-fetch-site']),
-        firstHeader(req.headers.referer),
-      )) {
-        writeJson(res, 403, { ok: false, error: { code: 'LOCAL_ORIGIN_REQUIRED', message: 'Claude usage is available only to the local Harness page' } })
-        return
-      }
-      const force = new URL(req.url ?? ROUTE, 'http://localhost').searchParams.get('refresh') === '1'
-      const result = await usage.read(force)
-      writeJson(res, result.ok ? 200 : 503, result)
-    },
-  }), 'claude-usage: HTTP route')
+
+  // This plugin renders its own Settings tab, so suppress the generated page.
+  ctx.inject(['settings'], (child) => {
+    child.effect(() => child.settings.configure({ auto: false }, ctx.fiber), 'claude-usage: settings presentation')
+  })
+
+  // DSH 0.2 owns /api through the authenticated connection layer: only owner
+  // Peers reach an exact route, after the carrier's Host/Origin checks.
+  ctx.effect(() => {
+    const unregister = ctx.connection.fetch.register({
+      path: ROUTE,
+      methods: ['GET'],
+      requestBody: 'buffered',
+      async fetch(request: Request): Promise<Response> {
+        const force = new URL(request.url).searchParams.get('refresh') === '1'
+        const result = await usage.read(force)
+        return json(result.ok ? 200 : 503, result)
+      },
+    })
+    return async () => { await unregister() }
+  }, 'claude-usage: API route')
 }
 
 export type {

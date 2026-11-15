@@ -134,6 +134,25 @@ describe('UsageService', () => {
     expect(fetchUsage).toHaveBeenCalledTimes(2)
   })
 
+  it('reads live options on every call so Settings edits apply without a restart', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000_000)
+    let live: UsageServiceOptions = { ...options }
+    const fetchUsage = vi.fn(async () => ({ kind: 'success' as const, payload }))
+    const service = new UsageService(() => live, deps(undefined, fetchUsage))
+
+    const first = await service.read(false)
+    expect(first.policy.refreshIntervalMs).toBe(300_000)
+    vi.advanceTimersByTime(70_000)
+    await service.read(false)
+    expect(fetchUsage).toHaveBeenCalledTimes(1)
+
+    live = { ...live, refreshIntervalMs: 60_000 }
+    const second = await service.read(false)
+    expect(fetchUsage).toHaveBeenCalledTimes(2)
+    expect(second.policy.refreshIntervalMs).toBe(60_000)
+  })
+
   it('attaches credential-derived plan metadata to normalized data', async () => {
     const fetchUsage = vi.fn(async () => ({ kind: 'success' as const, payload }))
     const service = new UsageService(options, deps(async () => credentials({ planType: 'pro', rateLimitTier: null }), fetchUsage))

@@ -46,28 +46,40 @@ export class UsageService {
   private rateLimitedUntil = 0
   private readonly loadCredentials: () => Promise<ClaudeCredentials>
   private readonly fetchUsage: (accessToken: string) => Promise<UsageApiResult>
+  private readonly currentOptions: () => UsageServiceOptions
 
+  /**
+   * @param options - fixed options, or a getter read on every call so live
+   * (volatile) settings edits apply without recreating the service.
+   */
   constructor(
-    private readonly options: UsageServiceOptions,
+    options: UsageServiceOptions | (() => UsageServiceOptions),
     deps: UsageServiceDeps = {},
   ) {
-    const file = resolveCredentialsFile(options.credentialsFile)
-    this.loadCredentials = deps.readCredentials ?? (async () => readCredentials(file))
+    this.currentOptions = typeof options === 'function' ? options : () => options
+    this.loadCredentials = deps.readCredentials
+      ?? (async () => readCredentials(resolveCredentialsFile(this.options.credentialsFile)))
     this.fetchUsage = deps.fetchUsage ?? (async accessToken => fetchOAuthUsage(accessToken, {
-      requestTimeoutMs: options.requestTimeoutMs,
+      requestTimeoutMs: this.options.requestTimeoutMs,
     }))
   }
 
+  private get options(): UsageServiceOptions {
+    return this.currentOptions()
+  }
+
   get policy(): UsagePolicy {
+    const options = this.options
     return {
-      refreshIntervalMs: this.options.refreshIntervalMs,
-      hoverRefreshMinAgeMs: this.options.hoverRefreshMinAgeMs,
+      refreshIntervalMs: options.refreshIntervalMs,
+      hoverRefreshMinAgeMs: options.hoverRefreshMinAgeMs,
     }
   }
 
   async read(force = false): Promise<ClaudeUsageResponse> {
     const age = Date.now() - this.lastAttemptAt
-    const minimumAge = force ? this.options.hoverRefreshMinAgeMs : this.options.refreshIntervalMs
+    const options = this.options
+    const minimumAge = force ? options.hoverRefreshMinAgeMs : options.refreshIntervalMs
     if (this.lastResult !== null && age < minimumAge) return this.lastResult
     if (this.inFlight !== null) return this.inFlight
     this.inFlight = this.fetch()

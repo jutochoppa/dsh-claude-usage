@@ -25,9 +25,20 @@ export interface ClaudeUsageSettingsSnapshot {
   revision: number | undefined
 }
 
+/** One field write, shaped like DSH's `SettingsPathOpView`. */
+export interface SettingsSetOp {
+  op: 'set'
+  path: string[]
+  value: ClaudeUsageSettings[SettingsField]
+}
+
+/**
+ * The subset of DSH 0.2's `ConfigForm` (from `ctx.configForms.get`) that
+ * saving needs: one atomic, revision-fenced mutation per save.
+ */
 export interface ClaudeUsageSettingsScope {
   getSnapshot(): ClaudeUsageSettingsSnapshot
-  set(field: string, value: unknown): Promise<void>
+  mutate(ops: readonly SettingsSetOp[], expectedRevision?: number): Promise<boolean>
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -106,23 +117,11 @@ export async function saveClaudeUsageSettings(
   if (initial.revision !== expectedRevision) {
     throw new Error('Claude usage settings changed while editing; discard and try again')
   }
-
-  let expected = initial.value
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const snapshot = attempt === 0 ? initial : scope.getSnapshot()
-    if (snapshot.status !== 'ready' || snapshot.value === undefined) {
-      throw new Error('Claude usage settings became unavailable while saving')
-    }
-    if (!settingsEqual(snapshot.value, expected)) {
-      throw new Error('Claude usage settings changed while saving; discard and try again')
-    }
-    const write = buildSettingsWritePlan(snapshot.value, target)[0]
-    if (write === undefined) return
-    await scope.set(write.field, write.value)
-    expected = { ...snapshot.value, [write.field]: write.value }
-  }
-
-  const final = scope.getSnapshot()
-  if (final.status === 'ready' && final.value !== undefined && settingsEqual(final.value, target)) return
-  throw new Error('Claude usage settings save exceeded its bounded write plan')
+  const ops = buildSettingsWritePlan(initial.value, target)
+    .map(({ field, value }): SettingsSetOp => ({ op: 'set', path: [field], value }))
+  if (ops.length === 0) return
+  // One mutation shares one revision fence: the Host refuses the whole write
+  // if anything changed since the draft was read.
+  const accepted = await scope.mutate(ops, expectedRevision)
+  if (!accepted) throw new Error('Claude usage settings changed while saving; discard and try again')
 }

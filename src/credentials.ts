@@ -27,7 +27,9 @@ export function resolveCredentialsFile(configured: string): string {
 
 function parseExpiry(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
-    // Claude Code writes ISO strings today; accept epoch numbers defensively.
+    // A zero or negative timestamp is a placeholder, not an expiry in 1970.
+    if (value <= 0) return null
+    // Claude Code writes epoch milliseconds; accept epoch seconds defensively.
     return value >= 1e11 ? value : value * 1000
   }
   if (typeof value === 'string' && value.trim() !== '') {
