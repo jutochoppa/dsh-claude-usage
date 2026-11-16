@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CredentialsUnavailableError, type ClaudeCredentials } from '../src/credentials.js'
-import { UsageService, type UsageServiceDeps, type UsageServiceOptions } from '../src/usage-service.js'
+import {
+  RENEW_COOLDOWN_MS, UsageService, type UsageServiceDeps, type UsageServiceOptions,
+} from '../src/usage-service.js'
+
+// Tests must never launch the real Claude Code CLI.
+const noRenew = async (): Promise<void> => { throw new Error('renewal disabled in tests') }
 
 const options: UsageServiceOptions = {
   refreshIntervalMs: 300_000,
@@ -22,8 +27,9 @@ function credentials(overrides: Partial<ClaudeCredentials> = {}): ClaudeCredenti
 function deps(
   load: () => Promise<ClaudeCredentials> = async () => credentials(),
   fetchUsage: UsageServiceDeps['fetchUsage'] = async () => ({ kind: 'success', payload: {} }),
+  renewCredentials: UsageServiceDeps['renewCredentials'] = noRenew,
 ): UsageServiceDeps {
-  return { readCredentials: load, fetchUsage }
+  return { readCredentials: load, fetchUsage, renewCredentials }
 }
 
 const payload = {
@@ -85,6 +91,7 @@ describe('UsageService', () => {
     const service = new UsageService(options, {
       readCredentials: async () => { throw new CredentialsUnavailableError('missing') },
       fetchUsage,
+      renewCredentials: noRenew,
     })
     const result = await service.read(true)
     expect(result.ok).toBe(false)
@@ -151,6 +158,83 @@ describe('UsageService', () => {
     const second = await service.read(false)
     expect(fetchUsage).toHaveBeenCalledTimes(2)
     expect(second.policy.refreshIntervalMs).toBe(60_000)
+  })
+
+  it('asks Claude Code to renew an expired token, then reads usage with the new token', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000_000)
+    let stored = credentials({ accessToken: 'old-token', expiresAtMs: 999_000 })
+    const renew = vi.fn(async () => { stored = credentials({ accessToken: 'new-token', expiresAtMs: 9_000_000 }) })
+    const fetchUsage = vi.fn(async (_token: string) => ({ kind: 'success' as const, payload }))
+    const service = new UsageService(options, deps(async () => stored, fetchUsage, renew))
+
+    const result = await service.read(true)
+    expect(result.ok).toBe(true)
+    expect(renew).toHaveBeenCalledTimes(1)
+    expect(fetchUsage).toHaveBeenCalledTimes(1)
+    expect(fetchUsage.mock.calls[0]?.[0]).toBe('new-token')
+  })
+
+  it('renews a token that is about to expire before using it', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000_000)
+    let stored = credentials({ accessToken: 'old-token', expiresAtMs: 1_030_000 })
+    const renew = vi.fn(async () => { stored = credentials({ accessToken: 'new-token', expiresAtMs: 9_000_000 }) })
+    const fetchUsage = vi.fn(async (_token: string) => ({ kind: 'success' as const, payload }))
+    const service = new UsageService(options, deps(async () => stored, fetchUsage, renew))
+
+    await service.read(true)
+    expect(renew).toHaveBeenCalledTimes(1)
+    expect(fetchUsage.mock.calls[0]?.[0]).toBe('new-token')
+  })
+
+  it('reports expiry without a network call when renewal fails, and cools down before retrying', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000_000)
+    const renew = vi.fn(noRenew)
+    const fetchUsage = vi.fn(async () => ({ kind: 'success' as const, payload }))
+    const service = new UsageService(options, deps(async () => credentials({ expiresAtMs: 999_000 }), fetchUsage, renew))
+
+    const first = await service.read(true)
+    expect(first.ok).toBe(false)
+    if (!first.ok) {
+      expect(first.error.code).toBe('CLAUDE_TOKEN_EXPIRED')
+      expect(first.error.message).toContain('claude auth status')
+    }
+    expect(fetchUsage).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(31_000)
+    await service.read(true)
+    expect(renew).toHaveBeenCalledTimes(1)
+
+    vi.advanceTimersByTime(RENEW_COOLDOWN_MS)
+    await service.read(true)
+    expect(renew).toHaveBeenCalledTimes(2)
+  })
+
+  it('renews and retries once when Anthropic rejects a token that looked valid', async () => {
+    let stored = credentials({ accessToken: 'revoked-token' })
+    const renew = vi.fn(async () => { stored = credentials({ accessToken: 'new-token' }) })
+    const fetchUsage = vi.fn(async (token: string) => token === 'new-token'
+      ? { kind: 'success' as const, payload }
+      : { kind: 'auth-expired' as const })
+    const service = new UsageService(options, deps(async () => stored, fetchUsage, renew))
+
+    const result = await service.read(true)
+    expect(result.ok).toBe(true)
+    expect(fetchUsage.mock.calls.map(call => call[0])).toEqual(['revoked-token', 'new-token'])
+  })
+
+  it('does not retry a rejected token when renewal returns the same token', async () => {
+    const renew = vi.fn(async () => {})
+    const fetchUsage = vi.fn(async () => ({ kind: 'auth-expired' as const }))
+    const service = new UsageService(options, deps(async () => credentials(), fetchUsage, renew))
+
+    const result = await service.read(true)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error.code).toBe('CLAUDE_AUTH_REQUIRED')
+    expect(renew).toHaveBeenCalledTimes(1)
+    expect(fetchUsage).toHaveBeenCalledTimes(1)
   })
 
   it('attaches credential-derived plan metadata to normalized data', async () => {

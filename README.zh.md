@@ -24,7 +24,7 @@ git clone https://github.com/jutochoppa/dsh-claude-usage.git
 cd dsh-claude-usage
 pnpm install
 pnpm pack
-dsh plugin --profile desktop add ./dsh-claude-usage-0.2.1.tgz
+dsh plugin --profile desktop add ./dsh-claude-usage-0.2.2.tgz
 ```
 
 然后完全退出 DeepSeek Harness 再重新打开，卡片就会出现在侧栏底部。
@@ -42,7 +42,9 @@ dsh plugin --profile desktop add ./dsh-claude-usage-0.2.1.tgz
 
 Claude Code 会把登录信息保存到 `~/.claude/.credentials.json`，插件从这里读取。只登录 Claude 桌面应用是不够的，因为桌面应用把登录信息单独保存。
 
-如果卡片提示需要重新登录，说明 Claude Code 的登录已过期。打开一次 Claude Code 通常会自动续期；不行的话再运行一次 `/login`。
+Claude Code 的登录每次只能维持大约 8 小时。过期后，插件会在后台运行 `claude auth status`，让 Claude Code 自己续期，效果和你手动运行一样。续期和保存都由 Claude Code 完成，插件从不接触你的 refresh token。为此，`claude` 需要在 PATH 中，或位于 Claude Code 安装程序默认放置的 `~/.local/bin`。
+
+如果卡片仍然提示需要登录，请自己运行一次 `claude auth status`。如果它显示你已退出登录，就在 Claude Code 中运行 `/login`。
 
 ## 卡片怎么看
 
@@ -68,7 +70,7 @@ Claude Code 会把登录信息保存到 `~/.claude/.credentials.json`，插件�
 
 ## 隐私
 
-- Claude Code 的令牌只留在你的电脑上。插件读取令牌后，只把它发给 Anthropic（`api.anthropic.com`）查询用量，不会保存、修改、续期或记录令牌。
+- Claude Code 的令牌只留在你的电脑上。插件读取令牌后，只把它发给 Anthropic（`api.anthropic.com`）查询用量，不会保存、修改或记录令牌，也从不读取你的 refresh token。令牌过期时由 Claude Code 自己续期，而不是插件。
 - 侧栏只会收到百分比、重置时间和套餐名称，不包含令牌、邮箱或账号 ID。
 - 用量数据来自 Claude Code 的 `/usage` 命令所用的同一个 Anthropic 接口。Anthropic 没有公开这个接口的文档，它可能随时变化。
 

@@ -1,7 +1,17 @@
 import { expect, it } from 'vitest'
 import { CredentialsUnavailableError, defaultCredentialsFile, readCredentials, type ClaudeCredentials } from '../src/credentials.js'
 import { normalizeUsage } from '../src/normalize.js'
+import { claudeCommandCandidates, renewViaClaudeCode } from '../src/renew.js'
 import { fetchOAuthUsage } from '../src/usage-api.js'
+
+it.runIf(process.env.CLAUDE_LIVE === '1')('runs Claude Code sign-in renewal via PATH and via the installer location', async () => {
+  // A valid sign-in is left unchanged; an expired one is renewed by Claude Code.
+  await renewViaClaudeCode(60_000)
+  const fallback = claudeCommandCandidates().slice(1)
+  await renewViaClaudeCode(60_000, fallback)
+  const credentials = readCredentials(defaultCredentialsFile())
+  expect(credentials.expiresAtMs === null || credentials.expiresAtMs > Date.now()).toBe(true)
+}, 150_000)
 
 it.runIf(process.env.CLAUDE_LIVE === '1')('reads current plan usage through Anthropic OAuth usage endpoint', async ctx => {
   let credentials: ClaudeCredentials

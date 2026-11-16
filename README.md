@@ -24,7 +24,7 @@ git clone https://github.com/jutochoppa/dsh-claude-usage.git
 cd dsh-claude-usage
 pnpm install
 pnpm pack
-dsh plugin --profile desktop add ./dsh-claude-usage-0.2.1.tgz
+dsh plugin --profile desktop add ./dsh-claude-usage-0.2.2.tgz
 ```
 
 Then quit DeepSeek Harness completely and open it again. The card appears at the bottom of the sidebar.
@@ -42,7 +42,9 @@ The plugin has no login of its own. It uses your Claude Code sign-in:
 
 Claude Code saves your sign-in to `~/.claude/.credentials.json`, and the plugin reads it from there. Signing in to the Claude desktop app is not enough, because the desktop app stores its sign-in separately.
 
-If the card asks you to sign in again, your Claude Code sign-in has expired. Opening Claude Code usually renews it; otherwise run `/login` again.
+Claude Code's sign-in only lasts about 8 hours at a time. When it runs out, the plugin asks Claude Code to renew it by running `claude auth status` in the background, exactly as if you ran it yourself. Claude Code does the renewing and saves the result; the plugin never touches your refresh token. For this to work, `claude` must be on your PATH or in `~/.local/bin`, where the Claude Code installer puts it.
+
+If the card still asks you to sign in, run `claude auth status` yourself. If that says you're signed out, run `/login` in Claude Code.
 
 ## Reading the card
 
@@ -68,7 +70,7 @@ Open **Settings → Plugins → Claude usage**. Changes take effect as soon as y
 
 ## Privacy
 
-- Your Claude Code token stays on your computer. The plugin reads it and sends it only to Anthropic (`api.anthropic.com`) to ask for your usage. It never saves, changes, renews, or logs the token.
+- Your Claude Code token stays on your computer. The plugin reads it and sends it only to Anthropic (`api.anthropic.com`) to ask for your usage. It never saves, changes, or logs the token, and it never reads your refresh token. When the token expires, Claude Code renews it, not the plugin.
 - The sidebar only receives percentages, reset times, and your plan name. No tokens, emails, or account IDs.
 - The usage numbers come from the same Anthropic endpoint that Claude Code's `/usage` command uses. Anthropic hasn't documented it publicly, so it could change without warning.
 
