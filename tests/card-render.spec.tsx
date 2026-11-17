@@ -3,7 +3,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { UsageCardView } from '../src/client/index.js'
+import { statusMessage, UsageCardView } from '../src/client/index.js'
 import type { UsageState } from '../src/client/store.js'
 import type { ClaudeUsageData } from '../src/types.js'
 
@@ -39,6 +39,30 @@ beforeEach(() => {
 afterEach(() => {
   act(() => { root.unmount() })
   container.remove()
+})
+
+describe('stale usage notice', () => {
+  const expired = 'The Claude Code sign-in expired and could not be renewed automatically. Run claude auth status, or /login in Claude Code.'
+
+  it('names the time and the reason when a refresh fails over older numbers', () => {
+    const fetchedAt = new Date(2026, 10, 17, 2, 14).getTime()
+    const sameDay = new Date(2026, 10, 17, 13, 0).getTime()
+    const message = statusMessage(state({ phase: 'error', error: expired, data: { ...data, fetchedAt } }), sameDay) ?? ''
+    expect(message.startsWith('Not updated since ')).toBe(true)
+    expect(message).not.toMatch(/11\/17/)
+    expect(message.endsWith(expired)).toBe(true)
+  })
+
+  it('includes the date when the numbers are from an earlier day', () => {
+    const fetchedAt = new Date(2026, 10, 16, 21, 5).getTime()
+    const nextDay = new Date(2026, 10, 17, 9, 0).getTime()
+    const message = statusMessage(state({ phase: 'error', error: expired, data: { ...data, fetchedAt } }), nextDay) ?? ''
+    expect(message).toMatch(/16/)
+  })
+
+  it('shows the reason alone when there are no older numbers', () => {
+    expect(statusMessage(state({ phase: 'error', error: expired, data: null }))).toBe(expired)
+  })
 })
 
 describe('Codex-style Claude usage card', () => {
@@ -80,7 +104,8 @@ describe('Codex-style Claude usage card', () => {
     expect(container.querySelector('.dcl-notice')?.textContent).toBe('Run claude login to sign in again.')
 
     act(() => { root.render(<UsageCardView state={state({ phase: 'error', error: 'Unable to read Claude plan usage right now.' })} wide />) })
-    expect(container.querySelector('.dcl-notice')?.textContent).toBe('Refresh failed; showing the last available usage.')
+    const stale = container.querySelector('.dcl-notice')?.textContent ?? ''
+    expect(stale).toMatch(/^Not updated since .+\. Unable to read Claude plan usage right now\.$/)
     expect(container.querySelectorAll('.dcl-limit')).toHaveLength(2)
   })
 })

@@ -24,7 +24,7 @@ git clone https://github.com/jutochoppa/dsh-claude-usage.git
 cd dsh-claude-usage
 pnpm install
 pnpm pack
-dsh plugin --profile desktop add ./dsh-claude-usage-0.2.2.tgz
+dsh plugin --profile desktop add ./dsh-claude-usage-0.2.3.tgz
 ```
 
 Then quit DeepSeek Harness completely and open it again. The card appears at the bottom of the sidebar.

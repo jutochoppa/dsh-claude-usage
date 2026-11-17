@@ -24,7 +24,7 @@ git clone https://github.com/jutochoppa/dsh-claude-usage.git
 cd dsh-claude-usage
 pnpm install
 pnpm pack
-dsh plugin --profile desktop add ./dsh-claude-usage-0.2.2.tgz
+dsh plugin --profile desktop add ./dsh-claude-usage-0.2.3.tgz
 ```
 
 然后完全退出 DeepSeek Harness 再重新打开，卡片就会出现在侧栏底部。

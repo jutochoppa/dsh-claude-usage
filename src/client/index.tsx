@@ -70,9 +70,9 @@ export function remainingPercent(usedPercent: number): number {
   return Math.round(100 - used)
 }
 
-function resetTime(resetsAt: number | null, includeDate: boolean): string | null {
-  if (resetsAt === null) return null
-  const date = new Date(resetsAt)
+function formatTime(timestamp: number | null, includeDate: boolean): string | null {
+  if (timestamp === null) return null
+  const date = new Date(timestamp)
   if (Number.isNaN(date.valueOf())) return null
   const options: Intl.DateTimeFormatOptions = includeDate
     ? { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }
@@ -98,7 +98,7 @@ function ClaudeLogo() {
 
 function LimitRow({ limit, wide }: { limit: CardLimit; wide: boolean }) {
   const remaining = remainingPercent(limit.window.usedPercent)
-  const reset = resetTime(limit.window.resetsAt, limit.includeDate)
+  const reset = formatTime(limit.window.resetsAt, limit.includeDate)
   const resetText = reset === null ? 'Reset time unavailable' : `${reset} Reset`
   return <section className="dcl-limit" aria-label={limit.label}>
     <div className="dcl-limit-title" title={limit.label}>{wide ? limit.label : limit.shortLabel}</div>
@@ -119,9 +119,20 @@ function LimitRow({ limit, wide }: { limit: CardLimit; wide: boolean }) {
   </section>
 }
 
-function statusMessage(state: UsageState): string | null {
+/** When the shown numbers were read: time only for today, date and time otherwise. */
+function updatedLabel(fetchedAt: number, now = Date.now()): string {
+  const sameDay = new Date(fetchedAt).toDateString() === new Date(now).toDateString()
+  return formatTime(fetchedAt, !sameDay) ?? 'an earlier check'
+}
+
+/**
+ * Card notice. A failed refresh over older numbers says how old they are and
+ * why the refresh failed, so stale numbers are never mistaken for live ones.
+ */
+export function statusMessage(state: UsageState, now = Date.now()): string | null {
   if (state.error !== null) {
-    return state.data === null ? state.error : 'Refresh failed; showing the last available usage.'
+    if (state.data === null) return state.error
+    return `Not updated since ${updatedLabel(state.data.fetchedAt, now)}. ${state.error}`
   }
   if (state.data === null) return 'Loading usage…'
   if (state.data.session === null && state.data.weekly === null && state.data.weeklyScoped.length === 0) {
